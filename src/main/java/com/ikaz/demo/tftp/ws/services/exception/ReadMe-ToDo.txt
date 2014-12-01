@@ -1,0 +1,1 @@
+ToDo: Add exceptions for each of the TFTP Error types
