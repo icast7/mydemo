@@ -20,6 +20,13 @@ public class NIOServer {
 
         System.out.println("Listening for connections on port "+ NIOServer.PORT);
 
+        byte[] rotation = new byte[95*2];
+
+        for (byte i = ' '; i <= '~'; i++ ) {
+            rotation[i - ' '] = i;
+            rotation[i + 95 - ' '] = i;
+        }
+
         ServerSocketChannel serverChannel;
         Selector selector;
 
@@ -44,47 +51,56 @@ public class NIOServer {
                 ex.printStackTrace();
                 break;
             }
-        }
 
-        Set<SelectionKey> readKeys = selector.selectedKeys();
-        Iterator<SelectionKey> iterator = readKeys.iterator();
-        while(iterator.hasNext()) {
-            SelectionKey key = iterator.next();
-            iterator.remove();
-            try {
-                if (key.isAcceptable()) {
-                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                    SocketChannel client = server.accept();
-                    System.out.println("Accept connection from " + client);
-                    client.configureBlocking(false);
+            Set<SelectionKey> readKeys = selector.selectedKeys();
+            Iterator<SelectionKey> iterator = readKeys.iterator();
+            while(iterator.hasNext()) {
+                SelectionKey key = iterator.next();
+                iterator.remove();
+                    try
+                    {
+                        if (key.isAcceptable()) {
+                            ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                            SocketChannel client = server.accept();
+                            System.out.println("Accept connection from " + client);
+                            client.configureBlocking(false);
 
-                    SelectionKey key2 = client.register(selector, SelectionKey.OP_WRITE);
-                    ByteBuffer buffer = ByteBuffer.allocate(4);
+                            SelectionKey key2 = client.register(selector, SelectionKey.OP_WRITE);
+                            ByteBuffer buffer = ByteBuffer.allocate(74);
+                            buffer.put(rotation, 0, 72);
+                            buffer.put((byte) '\r');
+                            buffer.put((byte) '\n');
+                            buffer.flip();
+                            key2.attach(buffer);
 
-                    buffer.putInt(0);
-                    buffer.flip();
-                    key2.attach(buffer);
-                } else if (key.isWritable()) {
-                    SocketChannel client = (SocketChannel) key.channel();
-                    ByteBuffer output = (ByteBuffer) key.attachment();
-                    if (!output.hasRemaining()) {
-                        // Refill buffer
-                        output.rewind();
-                        // Get the old first character
-                        int value = output.getInt();
-                        // Get ready to change the data in the buffer
-                        output.clear();
-                        output.putInt(value + 1);
-                        output.flip();
+                        } else if (key.isWritable()) {
+
+                            SocketChannel client = (SocketChannel) key.channel();
+
+                            ByteBuffer buffer = (ByteBuffer) key.attachment();
+
+                            if (!buffer.hasRemaining()) {
+                                // Refill buffer
+                                buffer.rewind();
+                                // Get the old first character
+                                int first = buffer.get();
+                                // Get ready to change the data in the buffer
+                                buffer.rewind();
+                                int position = first - ' ' + 1;
+                                buffer.put(rotation, position, 72);
+                                buffer.put((byte) '\r');
+                                buffer.put((byte) '\n');
+                                buffer.flip();
+                            }
+                            client.write(buffer);
+                        }
+                    } catch (IOException ex) {
+                        key.cancel();
+                        try {
+                            key.channel().close();
+                        }
+                        catch (IOException cex) {}
                     }
-                    client.write(output);
-                }
-            } catch (IOException ex) {
-                key.cancel();
-                try {
-                    key.channel().close();
-                }
-                catch (IOException cex) {}
             }
         }
     }
