@@ -16,8 +16,14 @@ import java.util.Set;
  */
 public class MyIntegerServer {
     public final static int PORT = 4000;
+    public final static String HOST = "localhost";
 
     public static void main(String[] args) {
+        MyIntegerServer server = new MyIntegerServer();
+        server.run();
+    }
+
+    void run() {
         ServerSocketChannel serverChannel;
         Selector selector;
 
@@ -82,7 +88,6 @@ public class MyIntegerServer {
                         //noop
                     }
                 }
-
             }
         }
     }

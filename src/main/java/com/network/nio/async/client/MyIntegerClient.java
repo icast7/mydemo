@@ -15,23 +15,28 @@ import java.nio.channels.SocketChannel;
 public class MyIntegerClient {
 
     public static void main(String[] args) {
-     try {
-         SocketAddress address = new InetSocketAddress("localhost", MyIntegerServer.PORT);
-         SocketChannel client = SocketChannel.open(address);
-         ByteBuffer  buffer = ByteBuffer.allocate(4);
-         IntBuffer view = buffer.asIntBuffer();
-         for (int expected = 0;; expected++){
-             client.read(buffer);
-             int actual = view.get();
-             buffer.clear();
-             view.rewind();
+        MyIntegerClient myIntegerClient = new MyIntegerClient();
+        myIntegerClient.run();
+    }
 
-             if (actual != expected) {
-                 System.err.println("Expected " +  expected + "; was " + actual);
-                 break;
-             }
-             System.out.println(actual);
-         }
+    void run () {
+        try {
+            SocketAddress address = new InetSocketAddress(MyIntegerServer.HOST, MyIntegerServer.PORT);
+            SocketChannel client = SocketChannel.open(address);
+            ByteBuffer  buffer = ByteBuffer.allocate(4);
+            IntBuffer view = buffer.asIntBuffer();
+            for (int expected = 0;; expected++){
+                client.read(buffer);
+                int actual = view.get();
+                buffer.clear();
+                view.rewind();
+
+                if (actual != expected) {
+                    System.err.println("Expected " +  expected + "; was " + actual);
+                    break;
+                }
+                System.out.println(actual);
+            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
