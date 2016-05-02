@@ -1,5 +1,7 @@
 package com.nr.cc.server;
 
+import com.nr.cc.server.domain.ServerStatus;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -11,7 +13,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.Iterator;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,6 +40,16 @@ public class MyIntegerServer {
     private static final int MESSAGE_LENGTH = 9;
     //Valid message regex: message line contains MESSAGE_LENGTH digits
     private static final String validMessageRegex = "^\\d{" + MESSAGE_LENGTH + "}$";
+    //Define status object
+    volatile ServerStatus currentStatus = new ServerStatus();
+    //ScheduledExecutorService used to post status updates
+    private ScheduledExecutorService scheduledExecutorService;
+    //Initialize set to limit concurrency issues with duplicates
+    private Set<String> syncSet = Collections.synchronizedSet(new HashSet<String>());
+    //Number of connections
+    public static final int NUMBER_OF_CONNECTIONS = 5;
+    //Keep list of channels
+    private List<SocketChannel> socketList = new ArrayList<>(NUMBER_OF_CONNECTIONS);
 
     private Selector selector;
 
@@ -47,6 +62,12 @@ public class MyIntegerServer {
         //Clear numbers file
         Files.deleteIfExists(NUMBERS_FILE_PATH);
         Files.write(NUMBERS_FILE_PATH,"".getBytes());
+
+        //Start scheduled reports
+        //Set scheduled service to manage printing status to the logger
+        scheduledExecutorService = Executors.newScheduledThreadPool(1);
+        //Start scheduled task to print status
+        scheduledExecutorService.scheduleAtFixedRate(new UpdateStatus(currentStatus, logger), 0, 10, TimeUnit.SECONDS);
 
         selector = Selector.open();
         ServerSocketChannel serverChannel = ServerSocketChannel.open();
@@ -87,37 +108,110 @@ public class MyIntegerServer {
         {
             buffer.flip();
             char ch = ((char) buffer.get());
+            buffer.clear();
+
             if(ch == SERVER_LINE_SEPARATOR){
                 String lineString = line.toString();
-                logger.log(Level.INFO, "Received  line: " + lineString);
+                //Add to set and write to file
                 if (lineString.matches(validMessageRegex)) {
-                    Files.write(NUMBERS_FILE_PATH, lineString.getBytes(), StandardOpenOption.APPEND);
+                    //If number is valid add it to the Set
+                    if (syncSet.add(lineString)) {
+                        //If the number was added write it to the numbers file
+                        currentStatus.incrementTotalUniqueNumbers();
+                        currentStatus.incrementUniqueNumbersSinceLastReport();
+                        //TODO Implement FileChannel to allow for thread safe operations
+                        Files.write(NUMBERS_FILE_PATH, lineString.getBytes(), StandardOpenOption.APPEND);
+                    } else {
+                        currentStatus.incrementDuplicateNumbersSinceLastReport();
+                    }
+                } else if (lineString.equals(TERMINATE_COMMAND)) {
+                    //Close all connections and return
+                    closeAllConnections();
+                    return;
+                } else {
+                    //Invalid msg, stop reading
+                    break;
                 }
-
                 //Create new line
                 line = new StringBuffer();
             } else {
-                //Append character to line
+                if (line.length() >= MESSAGE_LENGTH) {
+                    //Invalid msg, stop reading
+                    break;
+                }
+                //Append character to line IF string is shorter than expected
                 line.append(ch);
             }
-            //Clear buffer
-            buffer.clear();
         }
         //Close socket channel when no more data is received
+        socketList.remove(client);
         client.close();
         key.cancel();
         return;
     }
 
     private void acceptKey(SelectionKey key) throws IOException {
-        ServerSocketChannel server = (ServerSocketChannel) key.channel();
-        SocketChannel client = server.accept();
+        if (socketList.size() < NUMBER_OF_CONNECTIONS) {
+            ServerSocketChannel server = (ServerSocketChannel) key.channel();
+            SocketChannel client = server.accept();
 
-        client.configureBlocking(false);
-        System.out.println("Accepted connection from " + client);
+            //Add socket channel
+            socketList.add(client);
 
-        SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
-        ByteBuffer buffer = ByteBuffer.allocate(10);
-        clientKey.attach(buffer);
+            client.configureBlocking(false);
+            System.out.println(String.format("Accepted connection (%d) from %s.", socketList.size(), client));
+
+            SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
+            ByteBuffer buffer = ByteBuffer.allocate(10);
+            clientKey.attach(buffer);
+        }
+    }
+
+    /**
+     * This methods closes all SocketChannel connections
+     */
+    private void closeAllConnections() {
+        for (SocketChannel client :  socketList) {
+            SelectionKey key = client.keyFor(selector);
+            try {
+                client.close();
+            } catch (IOException ex) {
+                //noop
+            } finally {
+                key.cancel();
+            }
+        }
+        socketList.clear();
+    }
+
+    /**
+     * This class represents a runnable that appends the server status to the logger
+     */
+    class UpdateStatus implements Runnable {
+        private final ServerStatus serverStatus;
+        private final Logger logger;
+        //Log message
+        private static final String logMsg = "Received %d unique numbers, %d duplicates. Unique total: %d";
+
+        /**
+         * This is the runnable constructor
+         *
+         * @param serverStatus ServerStatus object
+         */
+        public UpdateStatus(ServerStatus serverStatus, Logger logger) {
+            this.serverStatus = serverStatus;
+            this.logger = logger;
+        }
+
+        /**
+         * The run method simply appends the current status to the log
+         */
+        @Override
+        public void run() {
+            logger.log(Level.INFO, String.format(logMsg, serverStatus.getUniqueNumbersSinceLastReport(),
+                    serverStatus.getDuplicateNumbersSinceLastReport(), serverStatus.getTotalUniqueNumbers()));
+            serverStatus.clearSinceLastReportCounters();
+        }
     }
 }
+

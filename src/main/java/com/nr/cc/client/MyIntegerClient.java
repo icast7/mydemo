@@ -28,7 +28,7 @@ public class MyIntegerClient {
 
             System.out.println("Client started...");
 
-            List<String> msgList = Arrays.asList("000000001","A00000001");
+            List<String> msgList = Arrays.asList("222333444555000000111","A11100000001");
 
             for (String aaa : msgList){
                 String formatted = aaa + MyIntegerServer.SERVER_LINE_SEPARATOR;
