@@ -23,7 +23,7 @@ import java.util.logging.Logger;
 /**
  * Created by icastillejos on 4/28/16.
  */
-public class MyIntegerServer {
+public class MyNumbersServer {
     public final static int PORT = 4000;
     public final static String HOST = "localhost";
     public static final char SERVER_LINE_SEPARATOR = System.lineSeparator().charAt(0);
@@ -33,7 +33,7 @@ public class MyIntegerServer {
     //Server address
     private final static InetSocketAddress ADDRESS = new InetSocketAddress(HOST, PORT);
     //Server operations log
-    private static final Logger logger = Logger.getLogger(MyIntegerServer.class.getCanonicalName());
+    private static final Logger logger = Logger.getLogger(MyNumbersServer.class.getCanonicalName());
     //Path to numbers.log file
     private final static Path NUMBERS_FILE_PATH = Paths.get("./numbers.log");
     //Length of numeric message
@@ -54,7 +54,7 @@ public class MyIntegerServer {
     private Selector selector;
 
     public static void main(String[] args) throws IOException {
-        MyIntegerServer server = new MyIntegerServer();
+        MyNumbersServer server = new MyNumbersServer();
         server.runServer();
     }
 
